@@ -1,87 +1,129 @@
 clear
-masterslave = readtable('DATA_motors_pHRI/master_slave_2kHz.txt');
+data = readtable('DATA_motors_pHRI/master_slave_1kHz.txt');
+Ts = mean(diff(data.TIME));
 
-Ts = mean(diff(masterslave.TIME));
-
-
-Ad = [ 1 Ts; 0 1];
-Bd = [Ts^2/2 Ts]';
-Cd = [1 0];
-
-Y(:,1) = masterslave.M_POS;  
-Y(:,2) = masterslave.M_VEL;   
-
-
-% E[x_(k+1)|Y^k]
-% E[y_(k+1)|Y^k]
-
-Xnext = 0;
-q=1000;
-Q = [q 0; 0 q];
-r=50000;
-R = [r 0; 0 r];
-
-Pk = [0.001 0; 0 0.001];
-Pk_next = [];
-Xk = [Y(1,1) Y(1,2)]';
+data = data(428:end,:);
 
 %%
-for i = 2:length(Y)
-    
-    % 1. Project the state ahead
-    Xk_prev = Ad * Xk;          
-    
-    % 2. Project the error covariance ahead
-    Pk_prev = Ad * Pk * Ad' + q;                  
-                                   
 
-    tmp = inv(Cd * Pk_prev * Cd' + r);   
-    
-    % 1. compute the Kalman gain
-    Kgain = (Pk_prev * Cd')*tmp;       
-    
-    % 2. update the estimate with measurement Yk
-    Xk = Xk_prev + Kgain' * ([Y(i,1) Y(i,2)]' - Cd * Xk_prev);
-    Xk_bf(:, i) = Xk;             
-    
-    % 3. Update the error Covariance
-    Pk = Pk_prev - Kgain * Cd * Pk_prev;   % Pk = (I - Kgain*Cp)Pk_prev
-    Pk_bf(:,i) = Pk(:);
-    
-end
-
+[pos,vel,acc] = KFA(data.M_POS,data.TIME);
+[pos1,vel1,acc1] = KFA_ss(data.M_POS,data.TIME);
+[pos2,vel2,acc2] = KAP(data.M_POS,data.TIME);
+[pos3,vel3,acc3] = KSmoother(data.M_POS,data.TIME);
 
 %% euler approx
-vel = [];
-for i = 1:length(Y)-1
-    vel(i) = (Y(i,2) - Y(i+1,2)) / Ts;
-        
-end
-vel = [vel 0];
+eul_vel = [];
+eul_vel = diff(data.M_POS)./Ts;
+eul_vel = [eul_vel' 0];
 
 %% other filter
+vel_filt = lowpass(data.M_VEL,0.25,10);
 
-
-vel2 = lowpass(Y(:,2),0.7,10);
+eul_low = lowpass(eul_vel,0.25,10);
 %% result plot
 
-
-plot(masterslave.TIME,Xk_bf(1,:))
-hold on
-plot(masterslave.TIME,masterslave.M_POS)
-legend({'kalman filter','noisy measurement'})
+% 
+% plot(data.TIME,pos)
+% hold on
+% plot(data.TIME,data.M_POS)
+% legend({'kalman filter','noisy measurement'})
+% figure
+% 
+% 
+% plot(data.TIME,vel)
+% hold on
+% plot(data.TIME,data.M_VEL)
+% plot(data.TIME,vel_filt,'Color','Green')
+% legend({'kalman filter','noisy measurement','other'})
+% 
 figure
-
-
-plot(masterslave.TIME,Xk_bf(2,:))
+plot(data.TIME,eul_vel)
 hold on
-plot(masterslave.TIME,masterslave.M_VEL)
-plot(masterslave.TIME,vel2,'Color','Green')
+plot(data.TIME,vel,'Color','Green')
+plot(data.TIME,data.M_VEL,'Color','Red')
+plot(data.TIME,eul_low,'Color','Black')
+legend({'euler approximation','kalman','noisy measuement','Euler + low pass'})
 
-legend({'kalman filter','noisy measurement','other'})
+% 
+% figure
+% plot(data.TIME,vel)
+% hold on
+% plot(data.TIME,vel1,'Color','Green')
+% plot(data.TIME,vel2,'Color','Red')
+% plot(data.TIME,vel3,'Color','Black')
+% legend({'Kalman filter','Kalman filter steady state','Kalman predictor','Kalman smoother'})
+% 
+% 
+
+
+
+%% Filter vs Predictor
+
+[pos,vel,acc] = KFA(data.M_POS,data.TIME);
+[pos1,vel1,acc1] = KAP(data.M_POS,data.TIME);
+
+plot(data.TIME,vel,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,vel1,'Color','Red','LineWidth',2)
+plot(data.TIME,data.M_VEL,'Color','Green','LineWidth',2)
+
+legend({'kalman filter','kalman predictor','Measurement'})
+
+
 figure
-plot(masterslave.TIME,vel)
-legend({'euler approximation'})
+plot(data.TIME,acc,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,acc1,'Color','Red','LineWidth',2)
+
+legend({'kalman filter','kalman predictor'})
+
+
+
+%% SS Filter vs Predictor
+
+[pos,vel,acc] = KFA_ss(data.M_POS,data.TIME);
+[pos1,vel1,acc1] = KAP_ss(data.M_POS,data.TIME);
+
+
+plot(data.TIME,vel,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,vel1,'Color','Red','LineWidth',2)
+plot(data.TIME,data.M_VEL,'Color','Green','LineWidth',2)
+legend({'kalman filter','kalman predictor','Measurement'})
+
+
+
+figure
+plot(data.TIME,acc,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,acc1,'Color','Red','LineWidth',2)
+
+legend({'kalman filter','kalman predictor'})
+
+
+
+%% Filter vs Smoother
+
+[pos,vel,acc] = KFA_ss(data.M_POS,data.TIME);
+[pos1,vel1,acc1] = KSmoother(data.M_POS,data.TIME);
+
+plot(data.TIME,vel,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,vel1,'Color','Red','LineWidth',2)
+plot(data.TIME,data.M_VEL,'Color','Green','LineWidth',2)
+
+legend({'kalman filter','kalman smoother','Measurement'})
+
+
+
+figure
+plot(data.TIME,acc,'Color','Blue','LineWidth',2)
+hold on
+plot(data.TIME,acc1,'Color','Red','LineWidth',2)
+
+legend({'kalman filter','kalman smoother'})
+
+
 
 
 
